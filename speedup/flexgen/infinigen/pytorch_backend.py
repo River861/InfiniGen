@@ -206,8 +206,8 @@ class TorchDevice:
             n_head = config.n_head
             head_dim = config.input_dim // n_head
             max_seq_len = task.prompt_len + task.gen_len - 1
-            self.attention_compute_workspace = []
-            self.workspace_pt = 0
+            self.attention_compute_workspace = []  # 这应该就是个装kv cache的数组
+            self.workspace_pt = 0  # 这是workspace数组的下标
 
             # We currently separate SelfAttention and MLP as two layers,
             # so we only need one workspace instead of two.
@@ -229,14 +229,14 @@ class TorchDevice:
         self.attention_compute_workspace = None
 
     def gen_attention_mask(self, token_ids, pad_token_id, donate):
-        data = token_ids.data.ne(pad_token_id)
+        data = token_ids.data.ne(pad_token_id)  # ne: not equal, 所以掩码是一个bool张量，表示每个token id是否不为[pad]
         if donate[0]: token_ids.delete()
-        return TorchTensor.create_from_torch(data, self)
+        return TorchTensor.create_from_torch(data, self)  # 形状为(batch_size, seq_len)
 
     def extend_attention_mask(self, attention_mask, donate):
         bs = attention_mask.shape[0]
         data = torch.concat((attention_mask.data,
-             torch.ones((bs, 1), dtype=attention_mask.dtype, device=self.dev)), dim=1)
+             torch.ones((bs, 1), dtype=attention_mask.dtype, device=self.dev)), dim=1)  # 添加一列1, 形状变成(batch_size, seq_len), 因为进行了一次decode?
         if donate[0]: attention_mask.delete()
         return TorchTensor.create_from_torch(data, self)
 
@@ -252,18 +252,23 @@ class TorchDevice:
         if donate[1]: attention_mask.delete()
 
         # token embedding
+        # 对token_ids做embedding, w_token是嵌入矩阵weights, 形状为(num_embeddings, embedding_dim)
+        # 所以这个函数其实就是为每个token_id在嵌入矩阵中选对应的张量表示, pad_token_id对应的embedding将被初始化为全0
         token_embed = F.embedding(token_ids, w_token.data, pad_token_id)
 
         # pos embedding
+        # cumsum是累加的意思, 因此这一行的效果是为每个有效token分配了一个顺序下标, 即1,2,3,4,...
         positions = torch.cumsum(mask, dim=1).int() * mask + 1
 
         # cut positions if `past_key_values_length` is > 0
+        # 对于过去的kv cache的长度，这一部分position直接截断, 比如decodo阶段，token_ids只有一个, 对应的position也只需要1个
+        # TODO: 这里是不是可以使用循环位置编码?
         past_key_values_length = mask.shape[1] - token_ids.shape[1]
         positions = positions[:, past_key_values_length:]
 
         pos_embed = F.embedding(positions, w_pos.data)
 
-        data = token_embed + pos_embed
+        data = token_embed + pos_embed  # tokens的嵌入表示和位置编码直接相加
         return TorchTensor.create_from_torch(data, self)
 
     def opt_output_embed(self, inputs, w_ln, b_ln, w_token, donate,
@@ -274,33 +279,33 @@ class TorchDevice:
 
         b, s, h = inputs.shape
 
-        hidden = F.layer_norm(inputs.data, (h,), weight=w_ln.data, bias=b_ln.data)
+        hidden = F.layer_norm(inputs.data, (h,), weight=w_ln.data, bias=b_ln.data)  # LayerNorm层
         if donate[0]: inputs.delete()
 
         # output embedding
-        logits = F.linear(hidden, w_token.data)
+        logits = F.linear(hidden, w_token.data)  # 然后经过线性层
         last_token_logits = logits[:,-1,:]
 
         if do_sample and not temperature < 1e-5:
             probs = torch.softmax(last_token_logits / temperature, dim=-1)
-            ids = torch.multinomial(probs, num_samples=1)
+            ids = torch.multinomial(probs, num_samples=1)  # 如果do_sample, 则按照softmax分布进行概率采样，不一定选中概率最高的
         else:
-            ids = last_token_logits.argmax(dim=1, keepdim=True)
-        return TorchTensor.create_from_torch(ids, self)
+            ids = last_token_logits.argmax(dim=1, keepdim=True)   # 否则直接选概率最高的token最为输出结果
+        return TorchTensor.create_from_torch(ids, self)  # 得到output token id
 
     def init_cache_one_gpu_batch(self, config, task, policy):
         num_head, hidden_size, prompt_len, gen_len, gpu_batch_size = (
             config.n_head, config.input_dim, task.prompt_len, task.gen_len,
             policy.gpu_batch_size)
-        shape = (prompt_len + gen_len - 1, gpu_batch_size * num_head, hidden_size // num_head)
+        shape = (prompt_len + gen_len - 1, gpu_batch_size * num_head, hidden_size // num_head)  # KV cache的形状
         # NOTE: disable pin_memory due to high memory overhead
         pin_memory = False
-        k_cache = self.allocate(shape, np.float16, pin_memory=pin_memory)
+        k_cache = self.allocate(shape, np.float16, pin_memory=pin_memory)  # 直接allocate对应形状的未初始化的张量即可
         v_cache = self.allocate(shape, np.float16, pin_memory=pin_memory)
         return k_cache, v_cache
 
     def mha(self, inputs, attention_mask, w_q, b_q, w_k, b_k, w_v, b_v,
-            w_out, b_out, w_ln, b_ln, n_head, donate, compress_cache, comp_config, warmup=False, partial_weight_ratio=0.1):
+            w_out, b_out, w_ln, b_ln, n_head, donate, compress_cache, comp_config, warmup=False, partial_weight_ratio=0.1):  # TODO: 细读attention
         """Multi-head attention (prefill phase)."""
         # decompress weights
         if w_q.device.device_type == DeviceType.COMPRESSED:
