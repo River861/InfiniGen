@@ -1321,17 +1321,17 @@ def get_filename(args):
 def get_inputs(prompt_len, num_prompts, tokenizer, path):
     prompts = []
     with open(path, 'r') as file:
-        prompts.append(file.read())
-    input_ids = tokenizer(prompts, padding="max_length",
+        prompts.append(file.read())  # 读取文件里所有的内容作为prompt
+    input_ids = tokenizer(prompts, padding="max_length",  # tokenizer对prompt进行编码，转化为token ids，长度会被填充到max_length
                           max_length=prompt_len).input_ids
-    input_ids[0] = input_ids[0][:prompt_len]
-    return (input_ids[0],) * num_prompts
+    input_ids[0] = input_ids[0][:prompt_len]  # 这步多余? 可能是corner case
+    return (input_ids[0],) * num_prompts  # 将处理后的prompt复制num_prompts次
 
 def run_flexgen(args):
     if args.model == "facebook/galactica-30b":
         tokenizer = AutoTokenizer.from_pretrained("facebook/galactica-30b", padding_side="left")
     else:
-        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-30b", padding_side="left")
+        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-30b", padding_side="left")  # GPT模型都是在文本左边进行padding
     num_prompts = args.num_gpu_batches * args.gpu_batch_size
     prompt_len, gen_len, cut_gen_len = args.prompt_len, args.gen_len, args.cut_gen_len
 
@@ -1342,6 +1342,7 @@ def run_flexgen(args):
     gpu = TorchDevice("cuda:0")
     cpu = TorchDevice("cpu")
     disk = TorchDisk(args.offload_dir)
+    # 创建了一个执行环境对象env，用于协调不同设备之间的数据处理和计算任务; mixed设备里会在三种设备里自动进行数据调度和计算管理
     env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
     policy = Policy(args.gpu_batch_size, args.num_gpu_batches,
@@ -1361,7 +1362,7 @@ def run_flexgen(args):
     opt_config = get_opt_config(args.model)
     cache_size = opt_config.cache_bytes(num_prompts, prompt_len + gen_len)
     hidden_size = opt_config.hidden_bytes(num_prompts, prompt_len + gen_len)
-    model = OptLM(opt_config, env, args.path, policy, args.partial_weight_ratio, args.alpha, args.max_num_kv)
+    model = OptLM(opt_config, env, args.path, policy, args.partial_weight_ratio, args.alpha, args.max_num_kv)  # !!!
 
     try:
         output_ids = model.generate(

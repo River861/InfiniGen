@@ -56,7 +56,7 @@ class DeviceType(Enum):
             raise ValueError(f"Invalid name: {name}")
 
 
-class TorchTensor:
+class TorchTensor:  # 这是个包装了pytorch tensor的类，实现了不同设备中tensor的共同表示, 详见下面类注释的note
     """
     Wrap pytorch tensors to support
       - Unified representation for normal and compressed tensors on
@@ -97,7 +97,7 @@ class TorchTensor:
         return np.prod(self.shape) * torch_dtype_to_num_bytes[self.dtype]
 
     @classmethod
-    def next_name(cls):
+    def next_name(cls):  # 用于给每个tensor分配id
         return f"t_{next(cls.name_count)}"
 
     @classmethod
@@ -108,9 +108,9 @@ class TorchTensor:
         assert self.device is not None, "already deleted"
         if self.device.device_type == DeviceType.DISK:
             self.device.delete(self)
-        self.device = self.data = None
+        self.device = self.data = None  # 非disk张量直接清空即可, python会自动gc (无论cpu还是gpu，但不一定立即执行)
 
-    def load_from_np(self, np_array):
+    def load_from_np(self, np_array):  # 从np.array数组中创建该类
         if self.device.device_type == DeviceType.DISK:
             with open(self.data, "wb") as fout:
                 np.save(fout, np_array)
@@ -120,7 +120,7 @@ class TorchTensor:
                 tmp = global_cpu_device.compressed_device.compress(tmp, self.data[2])
                 general_copy(self, None, tmp, None)
             else:
-                self.data.copy_(torch.from_numpy(np_array))
+                self.data.copy_(torch.from_numpy(np_array))  # torch.Tensor.copy_(默认non_blocking=False)是pytorch里的常用操作，就是对张量进行就地更新，可以跨cpu/gpu，形状必须相同
 
     def load_from_np_file(self, filename):
         if self.device.device_type == DeviceType.DISK:
@@ -128,10 +128,10 @@ class TorchTensor:
         else:
             self.load_from_np(np.load(filename))
 
-    def copy(self, dst, src_indices=None):
+    def copy(self, dst, src_indices=None):  # TODO 细读, 将被对象copy到dst
         if src_indices:
-            assert all(x.step is None for x in src_indices)
-            shape = tuple(x.stop - x.start for x in src_indices
+            assert all(x.step is None for x in src_indices)  # 确保slice没有step，即slice(0, 5)表示0-4, slice是python的一个内部类
+            shape = tuple(x.stop - x.start for x in src_indices  # 计算dst的shape(是个tuple)，indices只指定了前面几维的切片
                 ) + self.shape[len(src_indices):]
         else:
             shape = self.shape
@@ -139,16 +139,16 @@ class TorchTensor:
         if dst.device_type == DeviceType.COMPRESSED:
             ret = dst.allocate(shape, torch_dtype_to_np_dtype[self.dtype], self.data[2])
         else:
-            ret = dst.allocate(shape, torch_dtype_to_np_dtype[self.dtype])
+            ret = dst.allocate(shape, torch_dtype_to_np_dtype[self.dtype])  # 先allocate出一个未初始化的本类对象，再拷贝数值进去
         general_copy(ret, None, self, src_indices)
         return ret
 
-    def smart_copy(self, dst, src_indices=None):
+    def smart_copy(self, dst, src_indices=None):  # 如果是同device就不拷贝版本的copy
         if self.device == dst:
             return self, False
         return self.copy(dst, src_indices=src_indices), True
 
-    def move(self, dst):
+    def move(self, dst):  # copy + delete, 这个应该最常用
         if self.device == dst:
             return self
         ret = self.copy(dst)
@@ -168,16 +168,16 @@ class TorchDevice:
         self.mem_capacity = mem_capacity
         self.flops = flops
 
-        self.dev = torch.device(name)
-        self.device_type = DeviceType.convert(self.dev.type)
-        self.compressed_device = TorchCompressedDevice(self)
+        self.dev = torch.device(name)  # 这个才是torch给的接口, 如torch.device("cuda:0"), 将可以显示地将张量转移到这个设备上
+        self.device_type = DeviceType.convert(self.dev.type)  # 用特定的枚举值表示, 如DeviceType.CPU
+        self.compressed_device = TorchCompressedDevice(self)  # TODO: compress相关
 
         self.links = {}
 
         self.attention_compute_workspace = None
         self.workspace_pt = 0
 
-        if self.device_type == DeviceType.CPU:
+        if self.device_type == DeviceType.CPU:  # cpu设备用全局变量指示
             global global_cpu_device
             global_cpu_device = self
 
@@ -191,8 +191,8 @@ class TorchDevice:
         else:
             pin_memory = False
         dtype = np_dtype_to_torch_dtype[dtype]
-        data = torch.empty(shape, dtype=dtype, pin_memory=pin_memory, device=self.dev)
-        return TorchTensor.create_from_torch(data, self, name=name)
+        data = torch.empty(shape, dtype=dtype, pin_memory=pin_memory, device=self.dev)  # 创建未初始化的torch.Tensor
+        return TorchTensor.create_from_torch(data, self, name=name) # 用TorchTensor包装
 
     def delete(self, tensor):
         pass
@@ -659,8 +659,8 @@ class TorchDisk:
         self.links = {}
 
         # Copy threads
-        self.copy_queue = queue.Queue()
-        self.copy_threads = [
+        self.copy_queue = queue.Queue()  # queue中装了所有数据迁移任务 (python的queue是支持多线程的!! 有内部lock的)
+        self.copy_threads = [  # 启多个工作线程跑copy_worker_func函数
             threading.Thread(
                 target=copy_worker_func, args=(self.copy_queue, cuda_id)
             ) for _ in range(num_copy_threads)
@@ -678,9 +678,9 @@ class TorchDisk:
     def allocate(self, shape, dtype, pin_memory=None, name=None):
         name = name or TorchTensor.next_name()
         path = os.path.join(self.path, name)
-        np.lib.format.open_memmap(path, mode="w+", shape=shape, dtype=dtype)
+        np.lib.format.open_memmap(path, mode="w+", shape=shape, dtype=dtype)  # 创建内存映射, 但在这里有点多余?
         return TorchTensor(shape, np_dtype_to_torch_dtype[dtype],
-                           path, self, name=name)
+                           path, self, name=name)  # disk上的tensor其实就是一个文件, 这里直接用路径名作为tensor.data
 
     def delete(self, tensor):
         if os.path.exists(tensor.data) and tensor.delete_file:
@@ -811,27 +811,27 @@ class TorchLink:
 
 
 def general_copy(dst: TorchTensor, dst_indices: Tuple[slice],
-                 src: TorchTensor, src_indices: Tuple[slice]):
+                 src: TorchTensor, src_indices: Tuple[slice]):  # 异步拷贝, 如果要等copy完成，需要显示调用synchronize
     """Launch a general asynchronous copy between two tensors.
     It is equivalent to `dst[dst_indices] = src[src_indices]` in numpy syntax.
     The copy is asynchronous. To wait for the copy to complete, you need to call
     >>> env.disk.synchronize()
     >>> torch.cuda.synchronize()
     """
-    if dst.device.device_type == DeviceType.MIXED:
+    if dst.device.device_type == DeviceType.MIXED:  # MIXED: data: (tensors, segment_points); type: Tuple[Tuple[TorchTensor], Tuple[int]]
         # The tensor is on mixed devices, do recursive calls
         assert src.device.device_type != DeviceType.MIXED
         seg_points = dst.data[1]
 
-        for i in range(len(dst.device.base_devices)):
-            if seg_points[i] == seg_points[i+1]:
+        for i in range(len(dst.device.base_devices)):  # seg_points元组的每个下标对应一个设备, 分别是gpu,cpu,disk
+            if seg_points[i] == seg_points[i+1]:  # (seg_points[i], seg_points[i+1])是设备i对应的张量切片
                 continue
             src_indices = src_indices or tuple(slice(0, x) for x in src.shape)
-            dst_indices = dst_indices or tuple(slice(0, x) for x in dst.shape)
-            tmp_src_indices = cut_indices(src_indices, seg_points[i], seg_points[i+1])
+            dst_indices = dst_indices or tuple(slice(0, x) for x in dst.shape)  # slices是个元组，每个元素对应shape中每一维的slice
+            tmp_src_indices = cut_indices(src_indices, seg_points[i], seg_points[i+1])  # 切出对应独立设备上的张量indices
             tmp_dst_indices = cut_indices(dst_indices, seg_points[i], seg_points[i+1],
-                base=seg_points[i])
-            general_copy(dst.data[0][i], tmp_dst_indices, src, tmp_src_indices)
+                base=seg_points[i])  # dst张量在该维上从下标0放起, 因为要存成mixed_device的表示, 各设备的tensor是分开的, 即(tensors, segment_points)
+            general_copy(dst.data[0][i], tmp_dst_indices, src, tmp_src_indices)  # 递归调用处理每个设备上的张量copy
     elif src.device.device_type == DeviceType.MIXED:
         # The tensor is on mixed devices, do recursive calls
         assert dst.device.device_type != DeviceType.MIXED
@@ -843,34 +843,34 @@ def general_copy(dst: TorchTensor, dst_indices: Tuple[slice],
             src_indices = src_indices or tuple(slice(0, x) for x in src.shape)
             dst_indices = dst_indices or tuple(slice(0, x) for x in dst.shape)
             tmp_src_indices = cut_indices(src_indices, seg_points[i], seg_points[i+1],
-                base=seg_points[i])
+                base=seg_points[i])  # 现在轮到src张量从下标0读起，因为src才是mixed_device的表示, 各设备的tensor是分开的, 即(tensors, segment_points)
             tmp_dst_indices = cut_indices(dst_indices, seg_points[i], seg_points[i+1])
             general_copy(dst, tmp_dst_indices, src.data[0][i], tmp_src_indices)
     elif (src.device.device_type == DeviceType.COMPRESSED or
           dst.device.device_type == DeviceType.COMPRESSED):
         # The tensor is compressed, do recursive calls
-        general_copy_compressed(dst, dst_indices, src, src_indices)
+        general_copy_compressed(dst, dst_indices, src, src_indices)  # TODO: compress相关
     elif src.device.device_type == DeviceType.DISK:
         # The tensor is on the disk, dispatch to copy threads for asynchronous copy
-        src.device.submit_copy(dst, dst_indices, src, src_indices)
+        src.device.submit_copy(dst, dst_indices, src, src_indices)  # 放到工作队列queue中，由工作线程来异步处理
     elif dst.device.device_type == DeviceType.DISK:
         # The tensor is on the disk, dispatch to copy threads for asynchronous copy
-        dst.device.submit_copy(dst, dst_indices, src, src_indices)
+        dst.device.submit_copy(dst, dst_indices, src, src_indices)  # 放到工作队列queue中，由工作线程来异步处理
     elif (src.device.device_type == DeviceType.CUDA and
-          dst.device.device_type == DeviceType.CPU and
-          not dst.data.is_pinned() and src.shape[0] > 1):
+          dst.device.device_type == DeviceType.CPU and   # gpu => cpu (如果不是pin memory): 同样放到工作队列queue中，由工作线程来异步处理 (工作线程是全局的, 并不是disk专享的)
+          not dst.data.is_pinned() and src.shape[0] > 1):  # TODO: src.shape[0] > 1存疑?
         # The cpu tensor is not pinned, dispatch to copy threads and use pin_memory
         # as a relay
         global_disk_device.submit_copy(dst, dst_indices, src, src_indices)
     elif (src.device.device_type == DeviceType.CPU and
-          dst.device.device_type == DeviceType.CUDA and
+          dst.device.device_type == DeviceType.CUDA and  # cpu => gpu (如果不是pin memory): 把该src tensor的cpu memory给pin住
           not src.data.is_pinned()):
         # The cpu tensor is not pinned, use pin_memory as a relay
         src = src.data[src_indices] if src_indices else src.data
         dst = dst.data[dst_indices] if dst_indices else dst.data
-        src = src.pin_memory()
+        src = src.pin_memory()  # 这是pytorch的接口
         dst.copy_(src, non_blocking=True)
-    else:
+    else:  # 其余情形直接用pytorch接口复制即可
         # The normal path
         src = src.data[src_indices] if src_indices else src.data
         dst = dst.data[dst_indices] if dst_indices else dst.data
@@ -879,7 +879,7 @@ def general_copy(dst: TorchTensor, dst_indices: Tuple[slice],
 
 def cut_indices(indices, start, stop, base=0):
     assert all(x.step is None for x in indices)
-    seg = indices[SEG_DIM]
+    seg = indices[SEG_DIM]  # 仅对第SEG_DIM=1维进行cut，这一维也是mixed_device上张量的划分维度
     return (indices[:SEG_DIM] +
             (slice(max(seg.start, start) - base, min(seg.stop, stop) - base),) +
             indices[SEG_DIM + 1:])
@@ -894,7 +894,7 @@ def map_to_torch_tensor(tensor, indices):
     # BC: this is supposed to only handle the sparse v_cache case
     if torch.is_tensor(indices):
         return vector_gather(data, indices)
-    return data[indices] if indices else data
+    return data[indices] if indices else data  # indices是slice对象的数组, 每个slice对应shape的一维
 
 
 def copy_worker_func(queue, cuda_id):
@@ -906,23 +906,25 @@ def copy_worker_func(queue, cuda_id):
 
     with torch.cuda.stream(copy_stream):
         while True:
-            item = queue.get()
+            item = queue.get()  # get()会block直到有一个item是available的
             if item is None:
                 queue.task_done()
                 return
 
             dst, dst_indices, src, src_indices = item
+            # 将不同设备上的data[index]数据加载到内存 (disk上数据会通过内存映射文件来读取)
             src_data = map_to_torch_tensor(src, src_indices)
             dst_data = map_to_torch_tensor(dst, dst_indices)
 
             if (src.device.device_type == DeviceType.CUDA or
                 dst.device.device_type == DeviceType.CUDA):
                 # Use a pinned cpu buffer as a relay
-                size = np.prod(src_data.shape)
-                tmp_cpu_buf = cpu_buf[:size].view(src_data.shape)
-                tmp_cpu_buf.copy_(src_data)
-                dst_data.copy_(tmp_cpu_buf)
+                size = np.prod(src_data.shape)  # 将src_data的所有维度相乘，得到数据大小
+                tmp_cpu_buf = cpu_buf[:size].view(src_data.shape)  # 从pin memory中分配空间，并调整为和src_data相同的形状
+                tmp_cpu_buf.copy_(src_data)  # 拷贝到cpu_buf (其实就是把pin cpu memory作为中间媒介, 加快传输)
+                dst_data.copy_(tmp_cpu_buf)  # 再拷贝到dst
             else:
-                dst_data.copy_(src_data)
+                # torch.Tensor.copy_(默认non_blocking=False)是pytorch里的常用操作，就是对张量进行就地更新，可以跨cpu/gpu，形状必须相同
+                dst_data.copy_(src_data)  # 非GPU设备间(cpu, disk)直接拷贝
 
-            queue.task_done()
+            queue.task_done()  # 与queue.get()对应，表示取出的任务已经处理完毕
