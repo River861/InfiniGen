@@ -1,7 +1,7 @@
 #!/bin/bash
 
 partial=0.2
-seqlen=2048
+seqlen=1969
 
 # ## OPT
 # alpha=4
