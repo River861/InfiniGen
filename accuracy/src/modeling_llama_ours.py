@@ -210,6 +210,20 @@ class LlamaAttention(nn.Module):
         attn = attn.view(b*h, tgt_len, src_len)
         heads = b * h
 
+        # p_attn = p_attn.view(b * n_head, n)
+
+        # # selection
+        # max_ = torch.max(p_attn, dim=-1)[0]
+        # thr_ = (max_ - alpha).unsqueeze(-1).repeat(1, n)
+        # count = torch.where(  # (bh, n)
+        #     p_attn > thr_, torch.ones_like(p_attn), torch.zeros_like(p_attn)
+        # )
+        # # NOTE: this leads to different decoding results compared to a single request, as the top-k is decided by all the b requests
+        # mean = torch.mean(torch.sum(count, dim=-1)).item()  # the avg token number with attn scores larger than threshold
+        # ind = torch.topk(
+        #     p_attn, min(int(mean), max_num_kv), dim=-1
+        # )[1]
+
         attn_mask = torch.full(attn.shape, -10000, dtype=attn.dtype, device=attn.device)
         attn_mask = torch.triu(attn_mask, diagonal = 1)
         fetch_mask = torch.zeros_like(attn)
@@ -217,9 +231,9 @@ class LlamaAttention(nn.Module):
         attn = attn + attn_mask
         del attn_mask
         
-        max = torch.max(attn, dim = -1, keepdim = True)[0][0]
+        max = torch.max(attn, dim = -1, keepdim = True)[0][0] # (h, 1, n)
         threshold = max - self.alpha
-        fetch_num  = (attn >= threshold).sum(dim = -1) #heads, tgt_len
+        fetch_num  = (attn >= threshold).sum(dim = -1) # (h, 1)
         del threshold
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
