@@ -254,8 +254,8 @@ class LlamaAttention(nn.Module):
             fetch_mask[:, i, :i+1] = fetch_mask[:, i, :i + 1].scatter(-1, ind, 1)
             if i + 1 == store_max:
                 torch.set_printoptions(threshold=torch.inf)
-                print(f"debug: i={i} mask={fetch_mask[:, i, :i+1]}")
-                print(f"debug: count={fetch_mask[:, i, :i+1].float().sum().item() / heads} seq_len={i+1} ratio={fetch_mask[:, i, :i+1].float().sum().item() / heads / (i+1)}")
+                # print(f"debug: i={i} mask={fetch_mask[:, i, :i+1]}")
+                print(f"debug: i={i} count={fetch_mask[:, i, :i+1].float().sum().item() / heads} seq_len={i+1} ratio={fetch_mask[:, i, :i+1].float().sum().item() / heads / (i+1)}")
 
         for i in range(store_max, tgt_len):
             _, ind = torch.topk(attn[:,i, :i+1], k = fetch_num[i], dim = -1)
@@ -312,7 +312,7 @@ class LlamaAttention(nn.Module):
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
-        print(f"debug: kv_seq_len={kv_seq_len}")
+        # print(f"debug: kv_seq_len={kv_seq_len}")
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
@@ -329,13 +329,13 @@ class LlamaAttention(nn.Module):
         ### Speculate attention ###
         if (self.previous_hidden_states is not None) and (self.partial_weight_q is not None):
             query = (torch.matmul(self.previous_hidden_states, self.q_proj.weight.data.transpose(-1,-2))).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-            print(f"debug: position_ids={position_ids}")
+            # print(f"debug: position_ids={position_ids}")
             query, _ = apply_rotary_pos_emb(query, key_states, cos, sin, position_ids)
             query = query @ self.skewing_matrix.unsqueeze(0)
             mask = self.partial_weight_q[0].view(-1,128).unsqueeze(0).unsqueeze(2).repeat(1,1,query_states.shape[2], 1)
             query = torch.where(mask.to(torch.bool), query, torch.zeros_like(query))
 
-            print(f"debug: query={query.shape} key_states={key_states.shape}")
+            # print(f"debug: query={query.shape} key_states={key_states.shape}")
             attn = torch.matmul(query, (key_states @ self.skewing_matrix).transpose(2, 3))/math.sqrt(self.head_dim)
 
             attn_mask, density = self.kv_cache_mask(attn)
