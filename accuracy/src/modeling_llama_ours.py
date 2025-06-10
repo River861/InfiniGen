@@ -323,6 +323,7 @@ class LlamaAttention(nn.Module):
         ### Speculate attention ###
         if (self.previous_hidden_states is not None) and (self.partial_weight_q is not None):
             query = (torch.matmul(self.previous_hidden_states, self.q_proj.weight.data.transpose(-1,-2))).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+            print(f"debug: position_ids={position_ids}")
             query, _ = apply_rotary_pos_emb(query, key_states, cos, sin, position_ids)
             query = query @ self.skewing_matrix.unsqueeze(0)
             mask = self.partial_weight_q[0].view(-1,128).unsqueeze(0).unsqueeze(2).repeat(1,1,query_states.shape[2], 1)
