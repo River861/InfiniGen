@@ -239,6 +239,7 @@ class LlamaAttention(nn.Module):
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
+        torch.set_printoptions(threshold=torch.inf)
         print(f"debug: fetch_num={fetch_num} mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
         fetch_num = torch.where(fetch_num >= fetch_max, fetch_max, fetch_num) # tgt_len
 
@@ -626,7 +627,7 @@ class LlamaModel(LlamaPreTrainedModel):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        use_cache = True  # use_cache if use_cache is not None else self.config.use_cache
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
