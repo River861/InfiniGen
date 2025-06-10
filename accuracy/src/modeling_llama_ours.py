@@ -248,11 +248,12 @@ class LlamaAttention(nn.Module):
 
         fetch_mask[:, :fetch_max] = torch.tril(torch.ones((fetch_max, src_len), dtype = attn.dtype, device = attn.device)).unsqueeze(0)
 
+        assert fetch_mask.shape[0] == heads
         for i in range(fetch_max, store_max):
             _, ind = torch.topk(attn[:,i, :i+1], k = fetch_num[i], dim = -1)
             fetch_mask[:, i, :i+1] = fetch_mask[:, i, :i + 1].scatter(-1, ind, 1)
             print(f"debug: i={i} mask={fetch_mask[:, i, :i+1]}")
-            print(f"debug: count={fetch_mask[:, i, :i+1].float().sum().item()} seq_len={i+1} ratio={fetch_mask[:, i, :i+1].float().sum().item() / (i+1)}")
+            print(f"debug: count={fetch_mask[:, i, :i+1].float().sum().item() / heads} seq_len={i+1} ratio={fetch_mask[:, i, :i+1].float().sum().item() / heads / (i+1)}")
 
         for i in range(store_max, tgt_len):
             _, ind = torch.topk(attn[:,i, :i+1], k = fetch_num[i], dim = -1)
