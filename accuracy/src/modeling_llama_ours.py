@@ -230,16 +230,16 @@ class LlamaAttention(nn.Module):
         attn = attn + attn_mask
         del attn_mask
 
-        # attn: (bh, 1, n)
-        max = torch.max(attn, dim = -1, keepdim = True)[0][0] # (bh, 1)
+        # attn: (bh, n, n) => (32, 2048, 2048)
+        max = torch.max(attn, dim = -1, keepdim = True)[0][0] # (n, 1) => (2048, 1)
         threshold = max - self.alpha
-        fetch_num  = (attn >= threshold).sum(dim = -1) # (bh, 1, n)
+        fetch_num  = (attn >= threshold).sum(dim = -1) # (bh, n) => (32, 2048)
         print(f"debug: b={b} h={h} tgt_len={tgt_len} src_len={src_len} attn={attn.shape} max={max.shape} fetch_num={fetch_num.shape}")
         del threshold
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
-        print(f"debug: max={max} mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
+        print(f"debug: mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
         fetch_num = torch.where(fetch_num >= fetch_max, fetch_max, fetch_num) # tgt_len
 
         store_max = int(src_len * self.capacity)
@@ -326,6 +326,7 @@ class LlamaAttention(nn.Module):
             mask = self.partial_weight_q[0].view(-1,128).unsqueeze(0).unsqueeze(2).repeat(1,1,query_states.shape[2], 1)
             query = torch.where(mask.to(torch.bool), query, torch.zeros_like(query))
 
+            print(f"debug: query={query.shape} key_states={key_states.shape}")
             attn = torch.matmul(query, (key_states @ self.skewing_matrix).transpose(2, 3))/math.sqrt(self.head_dim)
 
             attn_mask, density = self.kv_cache_mask(attn)
