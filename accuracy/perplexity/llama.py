@@ -14,7 +14,8 @@ def get_llama(model, seqlen):
     torch.nn.init.normal_ = skip
 
     from transformers import LlamaForCausalLM
-    model = LlamaForCausalLM.from_pretrained(model, device_map='cpu', torch_dtype=torch.float16)
+    # model = LlamaForCausalLM.from_pretrained(model, device_map='cpu', torch_dtype=torch.float16)
+    model = LlamaForCausalLM.from_pretrained(model, torch_dtype=torch.float16)
 
     model.seqlen = seqlen
     model.config.use_cache = True
