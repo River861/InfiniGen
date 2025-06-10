@@ -285,6 +285,7 @@ class LlamaAttention(nn.Module):
         density = fetch_mask.float().sum().item() / heads / (tgt_len * (tgt_len + 1) / 2)
         fetch_mask = torch.where(fetch_mask == 1, 0, m_inf)
         fetch_mask = fetch_mask.view(b, h, tgt_len, src_len)
+        print(f"fetch_mask={fetch_mask}")
         return fetch_mask, density
     
     def forward(
