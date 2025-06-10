@@ -17,6 +17,7 @@ def get_llama(model, seqlen):
     model = LlamaForCausalLM.from_pretrained(model, device_map='cpu', torch_dtype=torch.float16)
 
     model.seqlen = seqlen
+    model.config.use_cache = True
     return model
 
 
