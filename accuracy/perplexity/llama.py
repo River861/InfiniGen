@@ -130,9 +130,10 @@ def llama_eval(model, testenc, dev, eval_sample, ours, print_chunk = False):
         lm_logits = model.lm_head(hidden_states)
 
         if i == 0:
-            ids = lm_logits.argmax(dim=-1)
+            output_logits = lm_logits[:, model.seqlen:, :]
+            ids = output_logits.argmax(dim=-1)
             output = tokenizer.decode(ids[0])
-            print(output)
+            print("////////////// OUTPUT /////////////\n" + output)
 
         shift_logits = lm_logits[:, :-1, :].contiguous()
         shift_labels = testenc[:, (i * model.seqlen):((i + 1) * model.seqlen)][:, 1:]
