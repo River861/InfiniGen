@@ -230,15 +230,16 @@ class LlamaAttention(nn.Module):
         m_inf = torch.tensor([[-10000]], dtype=attn.dtype, device=attn.device)
         attn = attn + attn_mask
         del attn_mask
-        
-        max = torch.max(attn, dim = -1, keepdim = True)[0][0] # (h, 1, n)
+
+        # attn: (bh, 1, n)
+        max = torch.max(attn, dim = -1, keepdim = True)[0][0] # (1, 1)
         threshold = max - self.alpha
-        fetch_num  = (attn >= threshold).sum(dim = -1) # (h, 1)
+        fetch_num  = (attn >= threshold).sum(dim = -1) # (bh, 1, n)
         del threshold
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
-        print(f"debug: mewn_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
+        print(f"debug: max={max} mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
         fetch_num = torch.where(fetch_num >= fetch_max, fetch_max, fetch_num) # tgt_len
 
         store_max = int(src_len * self.capacity)
