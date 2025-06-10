@@ -28,8 +28,21 @@ For a "Hello world"-sized example, please run the following command (10 minutes)
 cd lm_eval
 mkdir results
 python -u generate_task_data.py --output-file results/openbookqa-5.jsonl --task-name openbookqa --num-fewshot 5
-bash ours.sh openbookqa ../setup/opt-model/opt-6.7b facebook/opt-6.7b opt 5 0.2 4 1.0 0.2 
+<!-- bash ours.sh openbookqa ../setup/opt-model/opt-6.7b facebook/opt-6.7b opt 5 0.2 4 1.0 0.2  -->
+bash ours.sh openbookqa ${LLAMA_PATH}/llama-2-7b ${LLAMA_PATH}/llama-2-7b llama 5 0.2 5 1.0 0.2 
 ```
+
+task=$1
+model_path=$2
+model=$3
+model_arch=$4
+shots=$5
+partial_weight=$6
+alpha=$7
+capacity=$8
+budget=$9
+no_skewing=${10}
+
 
 ## Run Experiments (40 hours)
 You can reproduce the experimental results from Figure 11-13 and Table 2 by running the following commands:

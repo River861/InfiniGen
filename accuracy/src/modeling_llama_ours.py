@@ -224,6 +224,7 @@ class LlamaAttention(nn.Module):
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
+        print(f"debug: fetch_num={fetch_num} fetch_max={fetch_max}")
         fetch_num = torch.where(fetch_num >= fetch_max, fetch_max, fetch_num) # tgt_len
 
         store_max = int(src_len * self.capacity)
