@@ -235,13 +235,13 @@ class LlamaAttention(nn.Module):
         max = torch.max(attn, dim = -1, keepdim = True)[0] # (bh, n, 1)
         threshold = max - self.alpha
         fetch_num  = (attn >= threshold).sum(dim = -1) # (bh, n) => (32, 2048)
-        print(f"debug: b={b} h={h} tgt_len={tgt_len} src_len={src_len} attn={attn.shape} max={max.shape} fetch_num={fetch_num.shape}")
+        # print(f"debug: b={b} h={h} tgt_len={tgt_len} src_len={src_len} attn={attn.shape} max={max.shape} fetch_num={fetch_num.shape}")
         # del threshold
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
         # torch.set_printoptions(threshold=torch.inf)
-        print(f"debug: fetch_num={fetch_num} mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
+        # print(f"debug: mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
         fetch_num = torch.where(fetch_num >= fetch_max, fetch_max, fetch_num) # tgt_len
 
         store_max = int(src_len * self.capacity)
@@ -251,6 +251,8 @@ class LlamaAttention(nn.Module):
         for i in range(fetch_max, store_max):
             _, ind = torch.topk(attn[:,i, :i+1], k = fetch_num[i], dim = -1)
             fetch_mask[:, i, :i+1] = fetch_mask[:, i, :i + 1].scatter(-1, ind, 1)
+            print(f"!!!!NOTE: i={i} ind={ind} mask={fetch_mask[:, i, :i+1]} count={fetch_mask[:, i, :i+1].float().sum().item} seq_len={i+1}")
+            
 
         for i in range(store_max, tgt_len):
             _, ind = torch.topk(attn[:,i, :i+1], k = fetch_num[i], dim = -1)
@@ -285,7 +287,6 @@ class LlamaAttention(nn.Module):
         density = fetch_mask.float().sum().item() / heads / (tgt_len * (tgt_len + 1) / 2)
         fetch_mask = torch.where(fetch_mask == 1, 0, m_inf)
         fetch_mask = fetch_mask.view(b, h, tgt_len, src_len)
-        print(f"fetch_mask={fetch_mask}")
         return fetch_mask, density
     
     def forward(
