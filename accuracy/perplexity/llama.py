@@ -32,7 +32,7 @@ def llama_eval(model, testenc, dev, eval_sample, ours, print_chunk = False):
     print("nsamples: ", nsamples)
 
     use_cache = model.config.use_cache
-    model.config.use_cache = False
+    model.config.use_cache = True
     layers = model.model.layers
 
     model.model.embed_tokens = model.model.embed_tokens.to(dev)
