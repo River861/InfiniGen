@@ -186,10 +186,12 @@ class OPTAttention(nn.Module):
         max = torch.max(attn, dim = -1, keepdim = True)[0]
         threshold = max - self.alpha
         mask = (attn >= threshold)
-
         fetch_num = torch.sum(mask, dim = -1) # heads, tgt_len
+        print(f"debug: tgt_len={tgt_len} src_len={src_len} attn={attn.shape} max={max.shape} fetch_num={fetch_num.shape}")
+
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
+        print(f"debug: fetch_num={fetch_num} mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
         fetch_num = torch.where(fetch_num >= fetch_max, fetch_max, fetch_num) # tgt_len
 
         store_max = int(src_len * self.capacity)

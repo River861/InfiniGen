@@ -236,7 +236,7 @@ class LlamaAttention(nn.Module):
         threshold = max - self.alpha
         fetch_num  = (attn >= threshold).sum(dim = -1) # (bh, n) => (32, 2048)
         print(f"debug: b={b} h={h} tgt_len={tgt_len} src_len={src_len} attn={attn.shape} max={max.shape} fetch_num={fetch_num.shape}")
-        del threshold
+        # del threshold
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
