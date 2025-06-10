@@ -123,6 +123,11 @@ def llama_eval(model, testenc, dev, eval_sample, ours, print_chunk = False):
         if model.model.norm is not None:
             hidden_states = model.model.norm(hidden_states)
         lm_logits = model.lm_head(hidden_states)
+
+        if i == 0:
+            output = tokenizer.decode(lm_logits)
+            print(output)
+
         shift_logits = lm_logits[:, :-1, :].contiguous()
         shift_labels = testenc[:, (i * model.seqlen):((i + 1) * model.seqlen)][:, 1:]
         loss_fct = nn.CrossEntropyLoss(reduction='none')
@@ -187,6 +192,9 @@ if __name__ == '__main__':
         set_symlink("llama", "modeling_llama_orig.py")
     
     model = get_llama(args.model, args.seq_len)
+
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True, padding_side="left", legacy=False)
     
     ## H2O
     if args.heavy_ratio is not None:
