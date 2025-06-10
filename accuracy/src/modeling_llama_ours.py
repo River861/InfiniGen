@@ -252,10 +252,10 @@ class LlamaAttention(nn.Module):
         for i in range(fetch_max, store_max):
             _, ind = torch.topk(attn[:,i, :i+1], k = fetch_num[i], dim = -1)
             fetch_mask[:, i, :i+1] = fetch_mask[:, i, :i + 1].scatter(-1, ind, 1)
-            if i + 1 == store_max:
-                torch.set_printoptions(threshold=torch.inf)
-                # print(f"debug: i={i} mask={fetch_mask[:, i, :i+1]}")
-                print(f"debug: i={i} count={fetch_mask[:, i, :i+1].float().sum().item() / heads} seq_len={i+1} ratio={fetch_mask[:, i, :i+1].float().sum().item() / heads / (i+1)}")
+            # if i + 1 == store_max:
+            #     torch.set_printoptions(threshold=torch.inf)
+            #     # print(f"debug: i={i} mask={fetch_mask[:, i, :i+1]}")
+            #     print(f"debug: i={i} count={fetch_mask[:, i, :i+1].float().sum().item() / heads} seq_len={i+1} ratio={fetch_mask[:, i, :i+1].float().sum().item() / heads / (i+1)}")
 
         for i in range(store_max, tgt_len):
             _, ind = torch.topk(attn[:,i, :i+1], k = fetch_num[i], dim = -1)
