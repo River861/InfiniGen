@@ -231,7 +231,8 @@ class LlamaAttention(nn.Module):
         del attn_mask
 
         # attn: (bh, n, n) => (32, 2048, 2048)
-        max = torch.max(attn, dim = -1, keepdim = True)[0][0] # (n, 1) => (2048, 1)
+        # max = torch.max(attn, dim = -1, keepdim = True)[0][0] # (n, 1) => (2048, 1)
+        max = torch.max(attn, dim = -1, keepdim = True)[0] # (bh, n, 1)
         threshold = max - self.alpha
         fetch_num  = (attn >= threshold).sum(dim = -1) # (bh, n) => (32, 2048)
         print(f"debug: b={b} h={h} tgt_len={tgt_len} src_len={src_len} attn={attn.shape} max={max.shape} fetch_num={fetch_num.shape}")
@@ -239,7 +240,7 @@ class LlamaAttention(nn.Module):
 
         fetch_num = torch.mean(fetch_num.to(attn.dtype), dim = 0).to(torch.int32) # need to fetch same amount for each head
         fetch_max = int(src_len * self.budget)
-        torch.set_printoptions(threshold=torch.inf)
+        # torch.set_printoptions(threshold=torch.inf)
         print(f"debug: fetch_num={fetch_num} mean_fetch_num={torch.mean(fetch_num.float()).item()} fetch_max={fetch_max} seq_len={src_len}")
         fetch_num = torch.where(fetch_num >= fetch_max, fetch_max, fetch_num) # tgt_len
 
