@@ -130,7 +130,7 @@ def llama_eval(model, testenc, dev, eval_sample, ours, print_chunk = False):
         lm_logits = model.lm_head(hidden_states)
 
         if i == 0:
-            output_logits = lm_logits[:, model.seqlen:, :]
+            output_logits = lm_logits[:, model.seqlen // 2:, :]
             ids = output_logits.argmax(dim=-1)
             output = tokenizer.decode(ids[0])
             print("////////////// OUTPUT /////////////\n" + output)
