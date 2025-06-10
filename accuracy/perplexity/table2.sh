@@ -54,7 +54,7 @@ for size in 7b;do
     python llama.py --model "${LLAMA_PATH}/llama-2-${size}" \
       --eval_dataset ${dataset} \
       --seq_len ${seqlen} \
-      --eval_samples 0 \
+      --eval_samples 1 \
       --model_name "llama-${size}" \
       --infinigen \
       --partial_weight_ratio ${partial} \
