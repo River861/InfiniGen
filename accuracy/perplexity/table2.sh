@@ -46,7 +46,7 @@ seqlen=1969
 
 ## Llama-2
 alpha=5
-budget=0.2
+budget=1.0
 
 for size in 7b;do
   for dataset in "wikitext2" "ptb";do
